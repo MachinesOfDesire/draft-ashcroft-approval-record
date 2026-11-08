@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Approval-Act Record</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--muted:#555;--link:#0b57d0;--rule:#ddd}
+@media (prefers-color-scheme: dark){:root{--bg:#121212;--fg:#eaeaea;--muted:#aaa;--link:#8ab4f8;--rule:#333}}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:0 16px}
+main{max-width:720px;margin:48px auto}
+h1{font-size:1.6rem;margin:0 0 .25rem}
+.meta{color:var(--muted);margin:0 0 1.5rem}
+a{color:var(--link)}
+ul{padding-left:1.2rem}
+hr{border:0;border-top:1px solid var(--rule);margin:2rem 0}
+</style>
+</head>
+<body>
+<main>
+<h1>An Approval-Act Record for Standing Authorization Grants</h1>
+<p class="meta">draft-ashcroft-approval-record-00 &middot; J. Ashcroft, B. Morrison, N. Mathews</p>
+<p><strong>Read the draft:</strong></p>
+<ul>
+<li><a href="draft-ashcroft-approval-record-00.html">HTML</a></li>
+<li><a href="draft-ashcroft-approval-record-00.txt">Plain text</a></li>
+<li><a href="draft-ashcroft-approval-record-00.xml">xml2rfc source</a></li>
+</ul>
+<hr>
+<h2>Abstract</h2>
+<p>A standing authorization grant is an artifact that outlives the event that produced it. Existing authentication-strength vocabulary (acr/amr) describes authentication events and travels on tokens. Nothing carries a record of how a standing grant's approval was performed to the party verifying the grant, possibly days later and with no human present. This document defines an approval-act record: evidence of the approval ceremony, bound to the exact grant issuance approved, and carried in-band with the grant it authorizes. It defines one initial evidence type (WebAuthn assertions over a hash of the canonical grant), states precisely which of the record's claims a verifier can recompute, which rest on vendor attestation, and which remain attested by the operator, and provides a worked example with a failure matrix.</p>
+</main>
+</body>
+</html>

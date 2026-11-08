@@ -1,0 +1,896 @@
+
+
+
+
+Network Working Group                                        J. Ashcroft
+Internet-Draft                                               Kipple Labs
+Intended status: Experimental                                B. Morrison
+Expires: 8 May 2027                               Alter Meridian Pty Ltd
+                                                              N. Mathews
+                                       Agentic Verification Architecture
+                                                         4 November 2026
+
+
+        An Approval-Act Record for Standing Authorization Grants
+                   draft-ashcroft-approval-record-00
+
+Abstract
+
+   A standing authorization grant is an artifact that outlives the event
+   that produced it.  Existing authentication-strength vocabulary (acr/
+   amr) describes authentication events and travels on tokens.  Nothing
+   carries a record of how a standing grant's approval was performed to
+   the party verifying the grant, possibly days later and with no human
+   present.  This document defines an approval-act record: evidence of
+   the approval ceremony, bound to the exact grant issuance approved,
+   and carried in-band with the grant it authorizes.  It defines one
+   initial evidence type (WebAuthn assertions over a hash of the
+   canonical grant), states precisely which of the record's claims a
+   verifier can recompute, which rest on vendor attestation, and which
+   remain attested by the operator, and provides a worked example with a
+   failure matrix.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 8 May 2027.
+
+
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 1]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.  Code Components
+   extracted from this document must include Revised BSD License text as
+   described in Section 4.e of the Trust Legal Provisions and are
+   provided without warranty as described in the Revised BSD License.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   2
+     1.1.  Requirements Language . . . . . . . . . . . . . . . . . .   3
+     1.2.  Terminology . . . . . . . . . . . . . . . . . . . . . . .   3
+   2.  Design Constraints  . . . . . . . . . . . . . . . . . . . . .   3
+   3.  The Approval Record . . . . . . . . . . . . . . . . . . . . .   4
+     3.1.  Carriage  . . . . . . . . . . . . . . . . . . . . . . . .   5
+   4.  What the Record Claims, and Does Not  . . . . . . . . . . . .   5
+   5.  Parameters, Not Classes . . . . . . . . . . . . . . . . . . .   7
+     5.1.  Time, and Whose It Is . . . . . . . . . . . . . . . . . .   7
+     5.2.  Revocation, Measured Against the Same Interval  . . . . .   8
+   6.  Evidence Type: WebAuthn . . . . . . . . . . . . . . . . . . .   9
+   7.  Relationship to Existing Work . . . . . . . . . . . . . . . .   9
+   8.  Worked Example and Failure Matrix . . . . . . . . . . . . . .  10
+   9.  Implementation Status . . . . . . . . . . . . . . . . . . . .  12
+   10. Security Considerations . . . . . . . . . . . . . . . . . . .  12
+   11. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  12
+   12. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  13
+   13. References  . . . . . . . . . . . . . . . . . . . . . . . . .  13
+     13.1.  Normative References . . . . . . . . . . . . . . . . . .  13
+     13.2.  Informative References . . . . . . . . . . . . . . . . .  14
+   Appendix A.  Open Issues  . . . . . . . . . . . . . . . . . . . .  15
+   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  15
+   Authors' Addresses  . . . . . . . . . . . . . . . . . . . . . . .  15
+
+1.  Introduction
+
+   The Monday/Thursday problem, stated once.  An operator approves a
+   delegation on Monday behind a hardware authenticator.  The agent acts
+   on Thursday with no operator present.  A token minted Thursday
+   carries Thursday's acr: a service credential, or nothing.  The
+   approval act that actually stood behind the authority is invisible to
+   every verifier that matters, and it cannot be reconstructed after the
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 2]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   fact.  If it is not captured when the grant is made, it is gone.
+
+   The unattended case is the reason standing grants exist, so this
+   document treats it as the main case.
+
+1.1.  Requirements Language
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   BCP 14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+1.2.  Terminology
+
+   *  Standing authorization grant (grant): a signed artifact delegating
+      authority to an agent, valid across many later presentations.
+
+   *  Operator: the party that runs the agent and issues or obtains the
+      grant.
+
+   *  Approver: the human whose approval the grant is meant to reflect.
+
+   *  Approval act: the ceremony in which the approver approves one
+      grant issuance.
+
+   *  Approval record (record): the evidence of the approval act defined
+      in Section 3.
+
+   *  Verifier: any party that checks the grant and its record,
+      typically a relying party receiving the agent's request.
+
+   *  Operator anchor: the operator's JWK Set, published at the URI the
+      Signature-Agent field names, under a name the operator controls,
+      as used by the Web Bot Auth protocol
+      [I-D.ietf-webbotauth-httpsig-protocol].
+
+   *  Covered issued-at: the issuance time carried inside the grant
+      bytes covered by the record's challenge.
+
+   *  Approval interval: the verifier-local interval defined in
+      Section 5.1 within which the approval act provably occurred.
+
+2.  Design Constraints
+
+   C1.  In-band.  The record arrives inside, or inseparably with, the
+   grant it describes, checkable at request time from retained material,
+   with no token exchange the verifier cannot perform.
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 3]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   C2.  Evidence relates to its issuer.  The document states, per claim,
+   who issues the evidence and what a verifier can recompute versus must
+   take on attestation.  It never implies the evidence outranks its
+   issuer.
+
+   C3.  Reuse existing vocabulary. acr/amr semantics (OIDC
+   [OpenID.Core]), including the existing amr value "hwk" [RFC8176] and
+   the EAP ACR values [OpenID.EAP] for phishing-resistant
+   authentication, are reused, not reinvented.
+
+   C4.  Verifier-required, not self-declared.  Whether a record is
+   demanded, and at what strength, is the relying party's policy.  An
+   asserted value a verifier cannot check is treated as absent.
+
+   C5.  Parameters, not classes.  Timing and artifact binding are
+   parameters of the record rather than new assurance classes; see
+   Section 5.
+
+3.  The Approval Record
+
+   A grant carries at most one approval record.  The grant itself MUST
+   carry a unique issuance identifier (a serial, or issuance timestamp
+   plus id) as a covered field.  The REQUIRED form is deliberate.  An
+   optional identifier would create a third state, bound but content-
+   only, that every verifier handles differently and no vocabulary
+   names.  A grant format that cannot carry an identifier is not
+   excluded; it is priced, through captured binding, under Section 5.
+
+   Fields of the record:
+
+   *  evidence_type: registry identifier (Section 11).  This document
+      defines "webauthn".
+
+   *  evidence: the raw evidence artifact, carried inline.  For
+      webauthn: authenticatorData, clientDataJSON and signature.
+
+   *  attestation: OPTIONAL.  The authenticator's attestation statement
+      for the approver credential.  Attestation belongs to the
+      credential and is fixed at enrollment, so a verifier MAY retain it
+      from the first record it sees for that credential, and a record
+      MAY omit it when the verifier is expected to hold it already.  A
+      record that omits attestation still carries the credential
+      identifier, so a verifier can find the attestation it retained
+      from an earlier record for that credential.  A verifier that holds
+      no attestation for the credential, whether omitted, never sent or
+      unobtainable, reports claim 2's hardware claim as unattested; it
+      MUST NOT conclude invalid or unverifiable on that ground alone.
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 4]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   *  credential: the approver credential ID and public key.
+
+   *  binding: challenge = H(canonical grant bytes), where the grant
+      bytes include the issuance identifier.  There is no record-side
+      nonce.  The uniqueness that makes an approval unreplayable is a
+      property of the grant, covered by the challenge, or it protects
+      nothing.  Canonicalization is per grant format, not global: each
+      grant format registry entry owns its canonical form.  The JSON
+      grant format this document registers uses JCS [RFC8785]; a CBOR or
+      binary format states its own.
+
+   *  approved_at: timestamp of the approval act.  Operator-asserted;
+      Section 5 states what that prices.
+
+   *  parameters: artifact_binding and timing, per Section 5.
+
+   The record, attestation included when present, MUST NOT exceed 8 KiB.
+   A verifier that measures a record above the ceiling MUST conclude
+   invalid: the check completed and the record failed it.  Unverifiable
+   is reserved for a check that could not be performed.
+
+3.1.  Carriage
+
+   The record travels beside the grant.  Its challenge is the hash of
+   the grant bytes, and a grant already signed by its issuer cannot take
+   a new member without changing the bytes its issuer signed.  Keeping
+   the record outside leaves the grant exactly as issued, so any grant
+   format can carry a record, and no grant is re-issued to attach an
+   approval.
+
+   In JSON, the grant and its record travel together in a wrapper object
+   with two members, grant and approval_record.
+
+   Over HTTP, the record travels in its own header field, Approval-
+   Record, alongside the grant.  When the request is signed under the
+   Web Bot Auth protocol (HTTP Message Signatures [RFC9421]), the
+   signature MUST cover the Approval-Record field.  A record stripped in
+   transit then breaks the signature, where otherwise it would move the
+   request silently from the record VALID column to record ABSENT
+   (Section 8).  The 8 KiB ceiling keeps the field inside common default
+   per-header limits.
+
+4.  What the Record Claims, and Does Not
+
+   Three claims, three issuers.
+
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 5]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   Claim 1: This exact issuance was approved.  The verifier recomputes
+   the hash of the grant it holds, issuance identifier included, and
+   checks it against the signed challenge.  No issuer sits in that path;
+   the claim is recomputable.  The choice of semantics is deliberate and
+   stated: the approval binds an issuance, not a content.  Two re-issues
+   of identical content are two approvals, and an approval of one is
+   evidence for neither of the other.  This is what makes an old record
+   unreplayable onto a re-issued grant.  A reader who wants content
+   binding is asking for a different and weaker claim, and this document
+   declines to blur them.
+
+   Claim 2: The approval was performed on a hardware authenticator with
+   a user present and verified.  The presence and verification flags
+   ride inside the signed authenticator data, checkable against the
+   credential public key.  The hardware claim rests on enrollment-time
+   attestation.  Its issuer is the authenticator vendor: trust relocated
+   to a party with no stake in any particular grant, not removed.  Where
+   the verifier holds no attestation for the credential, the hardware
+   claim is reported as unattested while the presence and verification
+   flags still verify.  An authenticator identifier (AAGUID) carried
+   without attestation is self-asserted and proves nothing about the
+   hardware.
+
+   Claim 3: That credential belongs to that operator's approver.  The
+   residue.  The party being graded states it, nothing recomputes it,
+   and an operator could enroll its own credential and manufacture
+   human-looking approvals.  A verifier's confidence in claim 3 is
+   exactly its confidence in the operator's enrollment practice, and
+   this document says so plainly.
+
+   The honest composite: when all three claims verify, some human
+   holding the enrolled credential approved this exact issuance.
+
+   Three partial states are named, so implementations have something to
+   switch on other than a hard fail:
+
+   *  APPROVED BY AN ENROLLED CREDENTIAL, HOLDER UNATTRIBUTED.  Claims 1
+      and 2 verify; claim 3 cannot be evaluated (for example, the
+      operator anchor is unreachable).
+
+   *  APPROVED BY AN ENROLLED CREDENTIAL, HOLDER ATTRIBUTION UNRESOLVED
+      AT REVOCATION.  Claims 1 and 2 verify, but the approver credential
+      was revoked at a time inside the approval interval (Section 5), so
+      the verifier cannot tell whether the credential was still held by
+      the approver when the act occurred.  The name carries both facts
+      on purpose.  A verifier needs to know which half is open, and a
+      bare label would be implemented as a hard fail.
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 6]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   *  APPROVED BY AN ENROLLED CREDENTIAL, HOLDER ATTRIBUTION EXPIRED.
+      Claims 1 and 2 verify, but the operator anchor has lapsed
+      (Section 8), so claim 3 rests on an expired anchor and the holder
+      attribution expired with it.
+
+5.  Parameters, Not Classes
+
+   Two orthogonal parameters appear on every record.
+
+   artifact_binding = bound | captured
+
+   *  bound: the evidence's challenge is derived from the grant itself.
+      Bound evidence is safely reusable across presentations of that
+      grant precisely because it can attach to nothing else.
+
+   *  captured: the evidence was produced at approval time but is not
+      cryptographically bound to this grant.  Reuse is unsafe; verifiers
+      SHOULD treat captured evidence as weaker than bound.
+
+   timing = fresh | standing
+
+   *  fresh: evidence produced within a policy-defined window of the
+      presentation it accompanies.
+
+   *  standing: evidence produced at grant time; the artifact outlives
+      the ceremony.  This is the normal case for standing grants and the
+      reason this document exists.
+
+   A single class value cannot express that bound plus standing is safe
+   while captured plus standing is not.  That asymmetry is the argument
+   for parameters.
+
+5.1.  Time, and Whose It Is
+
+   approved_at has an issuer, and it is the operator.  Nothing the
+   authenticator signs carries a clock. authenticatorData holds the RP
+   ID hash, the flags, a signature counter (ordinal rather than
+   temporal, and zero on a great many authenticators) and extension
+   output. clientDataJSON holds the type, the challenge and the origin.
+   So the record's one timestamp rides outside the signed material, and
+   a verifier applying a freshness policy measured from approved_at is
+   trusting the operator's clock while believing it is checking
+   something.
+
+   The situation is better than pure trust by exactly one interval.  The
+   challenge covers the grant bytes, and the grant carries its issued-at
+   inside those bytes.  The assertion cannot exist before the grant it
+   covers, so the covered issued-at is a lower bound on the approval
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 7]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   act.  The verifier's first sight of the record is an upper bound on
+   its own clock.  The approval provably lies inside that interval, and
+   approved_at is an operator-asserted point within it.
+
+   Two freshness claims follow, named, so a verifier picks the one it
+   can afford:
+
+   *  ASSERTED freshness: a window measured from approved_at.  Operator
+      grade: exactly as good as the operator's clock and honesty.
+
+   *  CHECKABLE freshness: a window measured from the covered issued-at,
+      evaluated against the verifier's own clock.  Recomputable from
+      covered material, with no issuer in the path beyond the grant's
+      own.
+
+   Three rules keep the checkable claim checkable:
+
+   1.  The upper bound is VERIFIER-LOCAL and MUST NOT be carried as a
+       record field.  Two verifiers reading one record compute different
+       intervals, and the narrower one is not more true.  Written into
+       the record, the bound becomes one more operator-asserted
+       timestamp under a new name.
+
+   2.  First sight means FIRST USE.  The interval tightens only for a
+       verifier that keeps state across uses of a standing grant.  A
+       one-shot verifier gets the loosest interval, and one-shot is the
+       common case.
+
+   3.  The interval is only as independent as the grant's own issuer.
+       Where the operator issues the grant, the covered issued-at is the
+       operator's own assertion and the interval COLLAPSES to operator
+       grade.  This caveat sits here, beside the interval, deliberately:
+       a reader who takes the interval from one section and its collapse
+       condition from another will implement the first and not the
+       second.
+
+5.2.  Revocation, Measured Against the Same Interval
+
+   When the approver credential is revoked, the revocation's effective
+   time is compared with the interval above, not with approved_at:
+
+   *  Effective after the verifier's upper bound: the record stands; the
+      credential was valid when the act occurred.
+
+   *  Effective before the covered issued-at: invalid; the approver held
+      no valid credential when the act is claimed to have happened.
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 8]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   *  Effective inside the interval: genuinely doubtful, and doubtful
+      verifier-locally in the same way the upper bound is.  Rules 1 to 3
+      above govern it, and the result is the named partial state in
+      Section 4, APPROVED BY AN ENROLLED CREDENTIAL, HOLDER ATTRIBUTION
+      UNRESOLVED AT REVOCATION, which is not a hard fail.
+
+6.  Evidence Type: WebAuthn
+
+   Challenge construction. challenge = H(canonical grant bytes), where H
+   is SHA-256 [RFC6234], fixed by this document.  There is no per-record
+   hash field, because a negotiable hash is a downgrade lever every
+   verifier must defend forever.  Agility lives in the registry: a
+   future evidence_type, or a versioned entry, carries a different hash
+   when one is needed.
+
+   Verifier procedure.
+
+   1.  Recompute H from the grant it holds.
+
+   2.  Check equality with clientDataJSON.challenge.
+
+   3.  Verify the assertion signature against credential [WebAuthn].
+
+   4.  Read the UP and UV flags from authenticatorData.
+
+   5.  Evaluate the attestation, from the record or retained from an
+       earlier record for the same credential.  With none held, report
+       the hardware claim as unattested.
+
+   UV-required versus UP-sufficient maps to acr values per relying-party
+   policy.
+
+7.  Relationship to Existing Work
+
+   *  OIDC acr/amr [OpenID.Core] and EAP ACR values [OpenID.EAP]:
+      vocabulary source (C3).  An approval record is roughly acr/amr
+      semantics attached to a durable artifact instead of an
+      authentication event.
+
+   *  IPSIE [IPSIE]: overlapping interest in standardized
+      authentication-strength claims.  Flagged, deliberately not settled
+      here.
+
+
+
+
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                   [Page 9]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   *  draft-ietf-webbotauth-httpsig-protocol-01
+      [I-D.ietf-webbotauth-httpsig-protocol]: supplies the operator
+      anchor and the request signature that covers the Approval-Record
+      field (Section 3.1).  The anchor outcome vocabulary in Section 8
+      follows its discipline of keeping verified, invalid and unverified
+      distinct.
+
+   *  draft-brezun-human-continuity-http
+      [I-D.brezun-human-continuity-http], Section 7.5: the per-request
+      half of this mechanism appears expressible as a presentation-
+      assurance profile of that framework.  Its rule that asserted
+      values are unsatisfied unless the profile verifies evidence is the
+      same discipline as C4.  Boundary: a profile carrying only this
+      document's assurance semantics does NOT establish that a
+      credential belongs to a unique human, and must say so explicitly.
+
+   *  draft-morrison-acts-for [I-D.morrison-acts-for]: complementary.
+      Acts-For defines a pass an agent carries when acting for a person
+      and leaves the grant behind it out of scope.
+
+   *  AAuth [AAuth] (Person/Mission): complementary.  The token path
+      answers the interactive case; this document answers the standing
+      case.
+
+   *  Post-execution record layers: an approval record gives an
+      execution record something to say about the question disputes
+      actually litigate.  A record attributes; it never manufactures
+      authority, and it cannot recover approval strength that was not
+      captured at grant time.
+
+8.  Worked Example and Failure Matrix
+
+   One agent.  Operator anchor on one side (a JWK Set at a Signature-
+   Agent URI the operator controls), approval-bound grant on the other.
+   Materials are real WebAuthn assertions over real grant hashes,
+   produced by a working prototype and labeled as such.  The prototype
+   mints a JCS grant, runs the passkey ceremony over its hash and
+   verifies per Sections 4 to 6.  The failure set is 13 vectors, one
+   fault each, with each basis quoting the section it tests.  The
+   current fixture is a 1Password passkey with attestation "none", so
+   the verifier reports claim 2's hardware claim as unattested.
+
+   Anchor outcomes are three: VALID; LAPSED, a conclusive outcome where
+   the anchor expired and the verifier knows it; and UNREACHABLE, which
+   is not an outcome because the check never completed.  Anchor changed-
+   hands is deliberately absent from the matrix.  It is an ordering
+   question between two events, which is record-layer territory,
+   referenced rather than absorbed.
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                  [Page 10]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   Cells report per-claim outcomes, not a single verdict.
+
+   +==============+=====================+================+=============+
+   |              | Record VALID        | Record ABSENT  | Record      |
+   |              |                     |                | INVALID     |
+   +==============+=====================+================+=============+
+   | Anchor VALID | Claim 1 ok, Claim   | Accountable    | Invalid     |
+   |              | 2 ok, Claim 3 ok:   | operator;      | record.     |
+   |              | accountable         | approval       | Forgery is  |
+   |              | operator, human-    | strength       | one         |
+   |              | approved this       | unknown        | possible    |
+   |              | exact issuance      | (status quo)   | cause.  The |
+   |              |                     |                | one cell    |
+   |              |                     |                | treated     |
+   |              |                     |                | worse than  |
+   |              |                     |                | absent.     |
+   +--------------+---------------------+----------------+-------------+
+   | Anchor       | Claim 1 ok, Claim   | Operator       | Invalid     |
+   | LAPSED       | 2 ok, Claim 3       | accountability | record,     |
+   | (conclusive) | rests on an         | expired;       | expired     |
+   |              | expired anchor:     | nothing else   | anchor:     |
+   |              | APPROVED BY AN      | asserted       | nothing,    |
+   |              | ENROLLED            |                | loudly      |
+   |              | CREDENTIAL, HOLDER  |                |             |
+   |              | ATTRIBUTION         |                |             |
+   |              | EXPIRED.  A named   |                |             |
+   |              | partial state, not  |                |             |
+   |              | a hard fail.        |                |             |
+   +--------------+---------------------+----------------+-------------+
+   | Anchor       | Claim 1 ok, Claim   | NO VERDICT:    | Invalid is  |
+   | UNREACHABLE  | 2 ok, Claim 3       | the check      | invalid     |
+   | (no outcome) | unevaluated:        | never          | regardless  |
+   |              | APPROVED BY AN      | completed      | of anchor   |
+   |              | ENROLLED            |                | state       |
+   |              | CREDENTIAL, HOLDER  |                |             |
+   |              | UNATTRIBUTED.  A    |                |             |
+   |              | named partial       |                |             |
+   |              | state, not a hard   |                |             |
+   |              | fail.               |                |             |
+   +--------------+---------------------+----------------+-------------+
+
+                                  Table 1
+
+   Non-independence warning.  The two axes share a trust root.  Claim
+   3's issuer is the anchor party, so anchor-valid is a precondition of
+   claim 3, not corroborating evidence for it.  The anchor column and
+   the claim 3 row are the same trust, spent twice; a reader must not
+   sum them.
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                  [Page 11]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+9.  Implementation Status
+
+   Per [RFC7942], to be removed before publication as an RFC.  One
+   prototype exists: a Cloudflare Worker that mints a JCS grant,
+   performs the WebAuthn ceremony over its hash, verifies per Sections 4
+   to 6, and generates the 13-vector failure set from a real ceremony.
+   Coverage: one 1Password passkey fixture, attestation "none".  The
+   vectors are available from the authors on request.
+
+10.  Security Considerations
+
+   *  Replay: an approval binds one issuance because the issuance
+      identifier is inside the covered grant bytes.  There is no record-
+      side nonce to manage and nothing to reuse across re-issues.
+
+   *  Stolen approver credential: bounded by expiry and revocation of
+      the credential enrollment.  Whether revocation casts doubt
+      backward is decided by measuring its effective time against the
+      approval interval (Section 5.2): after the interval the record
+      stands, before it the record is invalid, inside it the result is
+      the named partial state in Section 4.
+
+   *  Self-enrollment (claim 3 residue): stated, not solved.
+      Mitigations are possible at enrollment (attestation policy) and
+      are out of scope here.
+
+   *  Record stripping: a request whose signature does not cover the
+      Approval-Record field can lose its record in transit and fall
+      silently into the record ABSENT column; Section 3.1 requires
+      coverage for that reason.
+
+   *  Size ceiling: the 8 KiB ceiling keeps a record inside common
+      default per-header limits on HTTP servers, and a record over the
+      ceiling is invalid so that oversized records cannot be pushed into
+      the unverifiable column.
+
+   *  Grant revocation: revocation of the grant itself is unchanged by
+      this document and must remain cheaper than approval.
+
+   *  Credential correlation: the raw credential public key travels to
+      every verifier of every grant the approver signs, and it is
+      exactly the correlator the at-rest rule in Section 12 exists for.
+      Pairwise keys stay incompatible with standing grants, so that
+      rule, not the wire, is where correlation is limited.
+
+11.  IANA Considerations
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                  [Page 12]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   *  Approval Record Evidence Types registry (new).  Policy:
+      Specification Required.  Columns: identifier, hash function,
+      description, reference.  Initial entry: "webauthn", SHA-256, this
+      document.
+
+   *  Approval Record Grant Formats registry (new).  Policy:
+      Specification Required.  Columns: identifier, canonicalization,
+      issuance-identifier field, issued-at field, reference.  Initial
+      entry: JSON grant, JCS [RFC8785], this document.
+
+   *  HTTP Field Name Registry: register Approval-Record (Section 3.1).
+      Status: permanent.  Reference: this document.
+
+12.  Privacy Considerations
+
+   The record exposes an approval event and a credential identifier to
+   every verifier of the grant.  Three facts follow.
+
+   The credential public key is the sharpest exposure.  A verifier needs
+   it to check the assertion, so the record cannot withhold it.  Where
+   the approver is the person the agent acts for, every verifier
+   receives the same key and can link all of that person's agents
+   through it.  The raw key is exactly the correlator the at-rest rule
+   below exists for.
+
+   Pairwise credentials per relying party are INCOMPATIBLE with standing
+   grants.  They require enumerating the verifiers at approval time, and
+   the reason standing grants exist is that you cannot.
+
+   The workable lever is at rest, not on the wire.  A verifier SHOULD
+   store H(credential_id, per-verifier salt) rather than the raw
+   identifier.  Per-verifier continuity survives, cross-verifier
+   correlation ends, and C1 is untouched because nothing about the
+   record changes.  The protocol cannot enforce this, since it is
+   storage policy, which is why it is a verifier SHOULD rather than a
+   wire mechanism.
+
+13.  References
+
+13.1.  Normative References
+
+   [OpenID.Core]
+              OpenID Foundation, "OpenID Connect Core 1.0", November
+              2014,
+              <https://openid.net/specs/openid-connect-core-1_0.html>.
+
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                  [Page 13]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   [OpenID.EAP]
+              Jones, M.B., "OpenID Connect Extended Authentication
+              Profile (EAP) ACR Values 1.0", June 2025,
+              <https://openid.net/specs/openid-connect-eap-acr-values-
+              1_0.html>.
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119,
+              DOI 10.17487/RFC2119, March 1997,
+              <https://www.rfc-editor.org/info/rfc2119>.
+
+   [RFC6234]  Eastlake 3rd, D. and T. Hansen, "US Secure Hash Algorithms
+              (SHA and SHA-based HMAC and HKDF)", RFC 6234,
+              DOI 10.17487/RFC6234, May 2011,
+              <https://www.rfc-editor.org/info/rfc6234>.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
+              May 2017, <https://www.rfc-editor.org/info/rfc8174>.
+
+   [RFC8176]  Jones, M., Hunt, P., and A. Nadalin, "Authentication
+              Method Reference Values", RFC 8176, DOI 10.17487/RFC8176,
+              June 2017, <https://www.rfc-editor.org/info/rfc8176>.
+
+   [RFC8785]  Rundgren, A., Jordan, B., and S. Erdtman, "JSON
+              Canonicalization Scheme (JCS)", RFC 8785,
+              DOI 10.17487/RFC8785, June 2020,
+              <https://www.rfc-editor.org/info/rfc8785>.
+
+   [RFC9421]  Backman, A., Ed., Richer, J., Ed., and M. Sporny, "HTTP
+              Message Signatures", RFC 9421, DOI 10.17487/RFC9421,
+              February 2024, <https://www.rfc-editor.org/info/rfc9421>.
+
+   [WebAuthn] W3C, "Web Authentication: An API for accessing Public Key
+              Credentials Level 3", W3C Web Authentication Level 3,
+              <https://www.w3.org/TR/webauthn-3/>.
+
+13.2.  Informative References
+
+   [AAuth]    Hardt, D., "AAuth Protocol", Work in Progress, Internet-
+              Draft, draft-hardt-oauth-aauth-protocol-11, 25 September
+              2026, <https://datatracker.ietf.org/doc/html/draft-hardt-
+              oauth-aauth-protocol-11>.
+
+
+
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                  [Page 14]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   [I-D.brezun-human-continuity-http]
+              Brezun, A., "Human Continuity for HTTP", Work in Progress,
+              Internet-Draft, draft-brezun-human-continuity-http-00, 6
+              August 2026, <https://datatracker.ietf.org/doc/html/draft-
+              brezun-human-continuity-http-00>.
+
+   [I-D.ietf-webbotauth-httpsig-protocol]
+              Meunier, T. and S. Major, "HTTP Message Signatures for
+              automated traffic", Work in Progress, Internet-Draft,
+              draft-ietf-webbotauth-httpsig-protocol-01, 29 October
+              2026, <https://datatracker.ietf.org/doc/html/draft-ietf-
+              webbotauth-httpsig-protocol-01>.
+
+   [I-D.morrison-acts-for]
+              Morrison, B., "Acts-For: Signing In to a Website with a
+              ~handle, for a Person or an Agent Acting for One", Work in
+              Progress, Internet-Draft, draft-morrison-acts-for-01, 3
+              November 2026, <https://datatracker.ietf.org/doc/html/
+              draft-morrison-acts-for-01>.
+
+   [IPSIE]    IETF, "IPSIE working group documents",
+              <https://datatracker.ietf.org/wg/ipsie/documents/>.
+
+   [RFC7942]  Sheffer, Y. and A. Farrel, "Improving Awareness of Running
+              Code: The Implementation Status Section", BCP 205,
+              RFC 7942, DOI 10.17487/RFC7942, July 2016,
+              <https://www.rfc-editor.org/info/rfc7942>.
+
+Appendix A.  Open Issues
+
+   1.  Intended status: Standards Track or Experimental.
+
+   2.  Whether the two new registries should merge into one.
+
+   3.  A second, attested fixture (a security key with packed
+       attestation) for the worked example.
+
+   4.  Final names for the approval_record member and the Approval-
+       Record field.
+
+Acknowledgments
+
+   Drew, Alter Meridian Pty Ltd. Aurelien Brezun: parameters, not
+   classes; the unique-human boundary.
+
+Authors' Addresses
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                  [Page 15]
+
+Internet-Draft             Approval-Act Record             November 2026
+
+
+   Joshua Ashcroft
+   Kipple Labs
+   Email: josh.ashcroft@gmail.com
+
+
+   Blake Morrison
+   Alter Meridian Pty Ltd
+   Email: blake@truealter.com
+
+
+   Nick Mathews
+   Agentic Verification Architecture
+   Email: nick@avalayer.com
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ashcroft, et al.           Expires 8 May 2027                  [Page 16]
